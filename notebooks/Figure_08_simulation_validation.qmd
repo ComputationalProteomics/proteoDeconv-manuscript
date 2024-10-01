@@ -1,0 +1,132 @@
+---
+title: Simulation validation
+author: Måns Zamore
+---
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+
+pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+annotation <- data.frame(
+  "ID" = colnames(pg |> select(-Genes)),
+  "cell_type" = stringr::str_extract(colnames(pg |> select(-Genes)), "(?<=_)[^_]+(?=-)")
+)
+
+counts <- pg |>
+  column_to_rownames("Genes") |>
+  as.matrix()
+tpm <- pg |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  column_to_rownames("Genes") |>
+  as.matrix()
+
+counts_sparse <- Matrix::Matrix(counts, sparse = TRUE)
+tpm_sparse <- Matrix::Matrix(tpm, sparse = TRUE)
+
+dataset <- SimBu::dataset(
+  annotation = annotation,
+  count_matrix = counts_sparse,
+  tpm_matrix = tpm_sparse,
+  name = "pg"
+)
+
+simulation <- SimBu::simulate_bulk(dataset,
+  scenario = "even",
+  scaling_factor = "NONE",
+  seed = 4,
+  whitelist = c("CD8T", "Mono")
+)
+
+simulated_data <- SummarizedExperiment::assays(simulation$bulk)[["bulk_tpm"]]
+
+signature <- read_tsv(
+  here("data/signature_matrices/LM7c.txt")
+)
+simulated_data <- simulated_data |>
+  as.matrix() |>
+  as_tibble(rownames = "Genes")
+simulated_deconvoluted <- deconvolute("cibersortx", simulated_data, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count")
+
+
+cell_fractions <- simulation$cell_fractions |>
+  as_tibble(rownames = "sample") |>
+  pivot_longer(cols = -sample, names_to = "cell_type", values_to = "cell_count")
+
+cell_type_mapping <- c(
+  "Bcell" = "B cells",
+  "Bnaive" = "B cells", # Assuming Bnaive are also B cells
+  "CD8T" = "T8 cells",
+  "Mono" = "Monocytes",
+  "NKactive" = "NK cells",
+  "Tcell" = "T4 cells" # Assuming Tcell are T4 cells
+)
+cell_fractions$cell_type <- dplyr::recode(cell_fractions$cell_type, !!!cell_type_mapping)
+
+joined_df <- dplyr::inner_join(cell_fractions, simulated_deconvoluted, by = c("cell_type", "sample"), suffix = c("_cf", "_sd"))
+```
+
+```{r}
+pg_full <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+real_mix_deconvoluted <- deconvolute("cibersortx", pg_full, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Real mix")
+
+real_mix_deconvoluted <- real_mix_deconvoluted |>
+  dplyr::filter(str_detect(sample, "Mix"))
+
+simulated_deconvoluted <- simulated_deconvoluted |>
+  mutate(method = "Simulated")
+
+combined <- bind_rows(real_mix_deconvoluted, simulated_deconvoluted) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+validation_plot <- ggplot(combined, aes(x = method, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean_cell_count - sd_cell_count, ymax = mean_cell_count + sd_cell_count), width = 0.2, position = position_dodge(.9)) +
+  geom_errorbar(aes(ymin = mean_cell_count - sd_cell_count, ymax = mean_cell_count + sd_cell_count), width = 0.2, position = position_dodge(.9)) +
+  theme(axis.text.x = element_text(angle = 0)) +
+  geom_errorbar(aes(ymin = mean_cell_count - sd_cell_count, ymax = mean_cell_count + sd_cell_count), width = 0.2, position = position_dodge(.9)) +
+  theme(axis.text.x = element_text(angle = 0)) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+
+ggsave("real-vs-simulated-mix.png", width = 8)
+
+```
+
+
+```{r}
+#| label: fig-simulation-validation
+validation_plot
+```

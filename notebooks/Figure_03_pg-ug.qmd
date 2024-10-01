@@ -1,0 +1,219 @@
+---
+title: Protein groups vs unique genes
+author: Måns Zamore
+---
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+ug <- read_tsv(here("data/raw_internal/bigsort/report.unique_genes_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+signature <- read_tsv(here("data/signature_matrices/LM7c.txt"))
+
+pg_deconvoluted <- deconvolute("cibersortx", pg, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "First protein")
+ug_deconvoluted <- deconvolute("cibersortx", ug, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Unique genes")
+
+
+combined <- bind_rows(pg_deconvoluted, ug_deconvoluted) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+ug_pg_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+```{r}
+#| label: fig-pg-ug
+ug_pg_plot
+```
+
+
+```{r}
+pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+pg_merge <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "merge") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+signature <- read_tsv(here("data/signature_matrices/LM7c.txt"))
+
+pg_deconvoluted <- deconvolute("cibersortx", pg, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Slice")
+pg_merge_deconvoluted <- deconvolute("cibersortx", pg_merge, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Merge")
+
+
+combined <- bind_rows(pg_deconvoluted, pg_merge_deconvoluted) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+slice_merge_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+
+```{r}
+#| label: fig-slice-merge-plot
+slice_merge_plot
+```
+
+
+```{r}
+#| label: fig-pg-ug-slice-merge-plot
+
+(ug_pg_plot | slice_merge_plot) +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A") &
+  theme(legend.position = "bottom")
+```
+
+
+```{r pg_ug_sim}
+data_pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+data_ug <-
+  read_tsv(here("data/raw_internal/bigsort/report.unique_genes_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+data_pg_merge <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "merge") |>
+  select(-matches("PBMC|Mix"))
+
+data_pg_knn <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "knn") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+data_pg_no_update_gene_symbols <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+
+cell_types <- stringr::str_extract(colnames(data_pg |> select(-Genes)), "(?<=_)[^_]+(?=-)")
+cell_type_mapping <- read_csv(here("data/signature_matrices/source/cell_type_mapping_full.csv"))
+cell_type_mapping <- setNames(cell_type_mapping$group, cell_type_mapping$cell_type)
+cell_types <- dplyr::recode(cell_types, !!!cell_type_mapping)
+
+signature <- read_tsv(here("data/signature_matrices/LM7c.txt")) |> rename_with(~ recode(., !!!cell_type_mapping))
+
+sim_pg <- get_simulation_metrics2(data_pg, cell_types, signature, seed = 4)
+sim_pg_f <- sim_pg |> dplyr::filter(cell_type != "NK cells")
+sim_pg_metrics <- sim_pg |> calculate_simulation_metrics()
+sim_pg_f_metrics <- sim_pg_f |> calculate_simulation_metrics()
+
+sim_ug <- get_simulation_metrics2(data_ug, cell_types, signature, seed = 4)
+sim_ug_f <- sim_ug |> dplyr::filter(cell_type != "NK cells")
+sim_ug_metrics <- sim_ug |> calculate_simulation_metrics()
+sim_ug_f_metrics <- sim_ug_f |> calculate_simulation_metrics()
+
+
+sim_ug_by_celltype <- sim_ug |>
+  group_by(cell_type) |>
+  summarise(
+    rmse = sqrt(mean((cell_count_cf - cell_count_sd)^2)),
+    correlation_pearson = cor(cell_count_cf, cell_count_sd, method = "pearson"),
+    correlation_spearman = cor(cell_count_cf, cell_count_sd, method = "spearman")
+  )
+
+
+sim_pg_knn <- get_simulation_metrics2(data_pg_knn, cell_types, signature, seed = 4)
+sim_pg_knn_f <- sim_pg_knn |> dplyr::filter(cell_type != "NK cells")
+sim_pg_knn_metrics <- sim_pg_knn |> calculate_simulation_metrics()
+sim_pg_knn_f_metrics <- sim_pg_knn_f |> calculate_simulation_metrics()
+
+sim_pg_merge <- get_simulation_metrics2(data_pg_merge, cell_types, signature, seed = 4)
+sim_pg_merge_f <- sim_pg_merge |> dplyr::filter(cell_type != "NK cells")
+sim_pg_merge_metrics <- sim_pg_merge |> calculate_simulation_metrics()
+sim_pg_merge_f_metrics <- sim_pg_merge_f |> calculate_simulation_metrics()
+
+sim_pg_no_update_gene_symbols <- get_simulation_metrics2(data_pg_no_update_gene_symbols, cell_types, signature, seed = 4)
+sim_pg_no_update_gene_symbols_f <- sim_pg_no_update_gene_symbols |> dplyr::filter(cell_type != "NK cells")
+sim_pg_no_update_gene_symbols_metrics <- sim_pg_no_update_gene_symbols |> calculate_simulation_metrics()
+sim_pg_no_update_gene_symbols_f_metrics <- sim_pg_no_update_gene_symbols_f |> calculate_simulation_metrics()
+```

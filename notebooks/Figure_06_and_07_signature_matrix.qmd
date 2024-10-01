@@ -1,0 +1,373 @@
+---
+title: Signature matrix
+author: Måns Zamore
+---
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+
+pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+pg_not_updated_gene_symbols <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+```
+
+
+```{r create_phenotype_classes}
+create_rieckmann_phenoclasses <- function(immune_cells) {
+  refsample_immune_cells <- immune_cells
+
+  data <- immune_cells |> select(-Genes)
+
+  colnames <- colnames(data)
+
+  cell_types <- unique(gsub("LFQ.intensity(.imputed)?_(.*)_\\d+_(activated|steady-state)", "\\2_\\3", colnames))
+  cell_type_to_group <- read_csv(here("data/signature_matrices/source/cell_type_mapping.csv"))
+  cell_type_to_group <- setNames(cell_type_to_group$group, cell_type_to_group$cell_type)
+
+  phenotype_classes <- matrix(0, nrow = length(unique(cell_type_to_group)), ncol = length(colnames))
+  rownames(phenotype_classes) <- unique(cell_type_to_group)
+  colnames(phenotype_classes) <- colnames
+
+  phenotype_classes <- phenotype_classes[!rownames(phenotype_classes) %in% c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs"), ]
+  phenotype_classes <- phenotype_classes[, !colnames(phenotype_classes) %in% c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")]
+
+  for (i in seq_len(nrow(phenotype_classes))) {
+    for (j in seq_len(ncol(phenotype_classes))) {
+      cell_type_in_col <- gsub("LFQ.intensity(.imputed)?_(.*)_\\d+_(activated|steady-state)", "\\2_\\3", colnames[j])
+      group_in_col <- cell_type_to_group[cell_type_in_col]
+      if (rownames(phenotype_classes)[i] == group_in_col) {
+        phenotype_classes[i, j] <- ifelse(group_in_col %in% c("Erythrocytes", "Thrombocytes"), 0, 1)
+      } else {
+        phenotype_classes[i, j] <- ifelse(group_in_col %in% c("Erythrocytes", "Thrombocytes"), 0, 2)
+      }
+    }
+  }
+
+  phenotype_classes <- as.data.frame(phenotype_classes) |> as_tibble(rownames = "cell_type")
+
+  phenotype_classes_tmpfile <- tempfile()
+  write_tsv(phenotype_classes, phenotype_classes_tmpfile, col_names = FALSE)
+
+  phenotype_classes_immune_cells <- read_tsv(phenotype_classes_tmpfile)
+}
+```
+
+
+```{r}
+immune_cells_lowest_value_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+
+
+immune_cells_knn_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "knn") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+
+
+
+immune_cells_sd_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity.imputed_")) |>
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |> # may not be needed?
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+
+```
+
+
+```{r}
+signature_lm7c <- read_tsv(
+  here("data/signature_matrices/LM7c.txt")
+)
+
+pg_deconvoluted_lm7c <- deconvolute("cibersortx", pg, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "LM7c")
+
+signature_matrix_lowest_value_imputed <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed))
+
+pg_deconvoluted_lowest_value_imputed_lm7c <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "A")
+
+signature_matrix_lowest_value_imputed_settings_no_updated_gene_symbols <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 300, g_max = 500, q_value = 0.01, filter = TRUE)
+
+signature_matrix_lowest_value_imputed_settings <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 300, g_max = 500, q_value = 0.01, filter = TRUE)
+pg_deconvoluted_lowest_value_imputed_lm7c_settings <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "B")
+
+signature_matrix_lowest_value_imputed_settings_nofilter <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 300, g_max = 500, q_value = 0.01, filter = FALSE)
+pg_deconvoluted_lowest_value_imputed_lm7c_settings_nofilter <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "C")
+
+signature_matrix_lowest_value_imputed_settings_g50to500 <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 50, g_max = 500, q_value = 0.01, filter = FALSE)
+pg_deconvoluted_lowest_value_imputed_lm7c_settings_g50to500 <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "D")
+
+signature_matrix_lowest_value_imputed_settings_g50to500_q005 <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 50, g_max = 500, q_value = 0.05, filter = FALSE)
+pg_deconvoluted_lowest_value_imputed_lm7c_settings_g50to500_q005 <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "E")
+
+
+cycloess_immune_cells <- limma::normalizeCyclicLoess(immune_cells_lowest_value_imputed |> column_to_rownames("Genes")) |> as_tibble(rownames = "Genes")
+
+cycloess_signature <- create_signature_matrix(cycloess_immune_cells, create_rieckmann_phenoclasses(cycloess_immune_cells), g_min = 300, g_max = 500, q_value = 0.01, filter = FALSE)
+pg_deconvoluted_cycloess_immune_cells <- deconvolute("cibersortx", pg, cycloess_signature, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Cycloess normalized signature")
+
+pg_cycloess <- limma::normalizeCyclicLoess(pg |> column_to_rownames("Genes")) |> as_tibble(rownames = "Genes")
+pg_deconvoluted_cycloess_immune_cells_cycloess_pg <- deconvolute("cibersortx", pg_cycloess, cycloess_signature, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Cycloess normalized signature and samples")
+
+
+pg_deconvoluted_immune_cells_cycloess_pg <- deconvolute("cibersortx", pg_cycloess, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Not normalized signature, cycloess normalized samples")
+
+pg_deconvoluted_immune_cells_pg_no_norm <- deconvolute("cibersortx", pg, signature_matrix_lowest_value_imputed_settings, perm = 2) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Not normalized signature, not normalized samples")
+
+combined <- bind_rows(
+  pg_deconvoluted_lm7c, pg_deconvoluted_lowest_value_imputed_lm7c, pg_deconvoluted_lowest_value_imputed_lm7c_settings,
+  pg_deconvoluted_lowest_value_imputed_lm7c_settings_nofilter,
+  pg_deconvoluted_lowest_value_imputed_lm7c_settings_g50to500,
+  pg_deconvoluted_lowest_value_imputed_lm7c_settings_g50to500_q005
+) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+signature_comparison_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y", labeller = labeller(method = label_wrap_gen(width = 25))) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+
+combined_norm <- bind_rows(
+  pg_deconvoluted_cycloess_immune_cells,
+  pg_deconvoluted_cycloess_immune_cells_cycloess_pg,
+  pg_deconvoluted_immune_cells_cycloess_pg
+) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+norm_comparison_plot <- ggplot(combined_norm, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y", labeller = labeller(method = label_wrap_gen(width = 25))) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+
+```{r}
+#| label: fig-norm-comparison
+
+
+norm_comparison_plot
+```
+
+```{r}
+#| label: fig-signature-comparison
+signature_comparison_plot
+```
+
+```{r simulation}
+combined_simulation_results <- bind_rows(
+  get_simulation_metrics(signature = signature_matrix_lowest_value_imputed) |> as_tibble() |> mutate(method = "A"),
+  get_simulation_metrics(signature = signature_matrix_lowest_value_imputed_settings) |> as_tibble() |> mutate(method = "B"),
+  get_simulation_metrics(signature = signature_matrix_lowest_value_imputed_settings_nofilter) |> as_tibble() |> mutate(method = "C"),
+  get_simulation_metrics(signature = signature_matrix_lowest_value_imputed_settings_g50to500) |> as_tibble() |> mutate(method = "D"),
+  get_simulation_metrics(signature = signature_matrix_lowest_value_imputed_settings_g50to500_q005) |> as_tibble() |> mutate(method = "E")
+)
+
+
+simplot <- ggplot(combined_simulation_results, aes(x = method, y = rmse)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Method", y = "RMSE", title = "RMSE by Method") +
+  theme(text = element_text(size = 16), axis.text.x = element_text(angle = 45, hjust = 1))
+
+simplot
+
+simplot2 <- ggplot(combined_simulation_results, aes(x = method, y = rmse, size = correlation_spearman)) +
+  geom_point(color = "steelblue") +
+  ylim(0, max(combined_simulation_results$rmse)) +
+  labs(x = "Method", y = "RMSE", size = "Correlation")
+simplot2
+```
+
+
+```{r}
+#| label: fig-signature-comparison-simulation
+simplot2
+```
+
+
+```{r}
+#| label: fig-signature-comparison-combined
+library(patchwork)
+combined_plot <- ((signature_comparison_plot | simplot2) / guide_area()) +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(widths = c(6, 1))
+
+
+
+
+combined_plot <- (signature_comparison_plot + theme(legend.position = "right") + guides(fill = guide_legend(nrow = 9))) / (simplot2 + theme(legend.position = "right") + guides(fill = guide_legend(nrow = 9))) +
+  plot_annotation(tag_levels = "I") +
+  plot_layout(heights = c(2, 1))
+
+combined_plot
+```
+
+```{r}
+immune_cells_lowest_value_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+immune_cells_lowest_value_imputed_not_updated <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+
+
+signature_matrix_lowest_value_imputed_settings_no_updated_gene_symbols <- create_signature_matrix(immune_cells_lowest_value_imputed_not_updated, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed_not_updated), g_min = 300, g_max = 500, q_value = 0.01, filter = TRUE)
+
+
+signature_matrix_lowest_value_imputed_settings <- create_signature_matrix(immune_cells_lowest_value_imputed, create_rieckmann_phenoclasses(immune_cells_lowest_value_imputed), g_min = 300, g_max = 500, q_value = 0.01, filter = TRUE)
+
+data_pg_no_update_gene_symbols <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+data_pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-matches("PBMC|Mix"))
+
+
+cell_types <- stringr::str_extract(colnames(data_pg |> select(-Genes)), "(?<=_)[^_]+(?=-)")
+cell_type_mapping <- read_csv(here("data/signature_matrices/source/cell_type_mapping_full.csv"))
+cell_type_mapping <- setNames(cell_type_mapping$group, cell_type_mapping$cell_type)
+cell_types <- dplyr::recode(cell_types, !!!cell_type_mapping)
+
+
+sim_pg <- get_simulation_metrics2(data_pg, cell_types, signature_matrix_lowest_value_imputed_settings, seed = 4)
+sim_pg_f <- sim_pg |> dplyr::filter(cell_type != "NK cells")
+sim_pg_metrics <- sim_pg |> calculate_simulation_metrics()
+sim_pg_f_metrics <- sim_pg_f |> calculate_simulation_metrics()
+
+sim_pg_not_updated <- get_simulation_metrics2(data_pg_no_update_gene_symbols, cell_types, signature_matrix_lowest_value_imputed_settings_no_updated_gene_symbols, seed = 4)
+sim_pg_f_not_updated <- sim_pg_not_updated |> dplyr::filter(cell_type != "NK cells")
+sim_pg_metrics_not_updated <- sim_pg_not_updated |> calculate_simulation_metrics()
+sim_pg_f_metrics_not_updated <- sim_pg_f_not_updated |> calculate_simulation_metrics()
+```
+
+
+
+```{r self-deconvolution}
+immune_cells_lowest_value_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  select(-contains(c("Erythrocyte", "Thrombocyte", "Th", "Tregs")))
+
+cell_types <- gsub("LFQ.intensity(.imputed)?_(.*)_\\d+_(activated|steady-state)", "\\2_\\3", colnames(immune_cells_lowest_value_imputed |> select(-Genes)))
+cell_type_mapping <- read_csv(here("data/signature_matrices/source/cell_type_mapping.csv"))
+cell_type_mapping <- setNames(cell_type_mapping$group, cell_type_mapping$cell_type)
+cell_types <- dplyr::recode(cell_types, !!!cell_type_mapping)
+
+sim_df <- get_simulation_metrics2(immune_cells_lowest_value_imputed, cell_types, signature_matrix_lowest_value_imputed_settings, seed = 4)
+
+
+calculate_simulation_metrics(sim_df)
+```

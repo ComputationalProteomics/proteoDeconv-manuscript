@@ -1,0 +1,144 @@
+---
+title: Imputation methods
+author: Måns Zamore
+---
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+pg_lowest_value <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+pg_knn <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "knn") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+
+signature <- read_tsv(here("data/signature_matrices/LM7c.txt"))
+
+pg_lowest_value_deconvoluted <- deconvolute("cibersortx", pg_lowest_value, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Lowest value imputation")
+pg_knn_deconvoluted <- deconvolute("cibersortx", pg_knn, signature) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "kNN imputation")
+
+combined <- bind_rows(pg_lowest_value_deconvoluted, pg_knn_deconvoluted) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+comparison_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+```{r}
+#| label: fig-imputation-methods
+comparison_plot
+```
+
+
+```{r}
+immune_cells_sd_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity.imputed_")) |>
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |> # may not be needed?
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+
+immune_cells_lowest_value_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+```
+
+```{r}
+signature_lm7c <- read_tsv(here("data/signature_matrices/LM7c.txt"))
+
+immune_cells_sd_imputed_deconvoluted <- deconvolute("cibersortx", immune_cells_sd_imputed, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Standard distribution imputation")
+
+immune_cells_lowest_value_imputed_deconvoluted <- deconvolute("cibersortx", immune_cells_lowest_value_imputed, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Lowest value imputation")
+
+combined <- bind_rows(immune_cells_sd_imputed_deconvoluted, immune_cells_lowest_value_imputed_deconvoluted) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=_)")) |>
+  dplyr::filter(sample_part != "Erythrocyte", sample_part != "Thrombocyte", !str_detect(sample, "Th1|Th17|Th2")) |>
+  mutate(sample_part = case_when(
+    str_detect(sample, "MO.classical|MO.intermediate|MO.nonclassical") ~ "Monocytes",
+    str_detect(sample, "NK.bright|NK.dim") ~ "NK cells",
+    str_detect(sample, "T4.EM|T4.EMRA|T4.naive|T4.CM") ~ "CD4+ T cells",
+    str_detect(sample, "T8.EM|T8.EMRA|T8.naive|T8.CM") ~ "CD8+ T cells",
+    str_detect(sample, "mDC|pDC") ~ "Dendritic cells",
+    str_detect(sample, "B.memory|B.naive|B.plasma") ~ "B cells",
+    .default = sample_part
+  )) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+sd_min_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+```{r}
+#| label: fig-sd-min
+
+sd_min_plot
+```
+
+```{r}
+#| label: fig-imputation-combined
+#| fig-height: 7
+
+combined_plot <- ((comparison_plot + xlab("")) / (sd_min_plot)) + plot_annotation(tag_levels = "A") + plot_layout(guides = "collect")
+
+combined_plot
+```

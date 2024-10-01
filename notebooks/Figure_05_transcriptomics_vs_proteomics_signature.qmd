@@ -1,0 +1,68 @@
+---
+title: Transcriptomics-derived vs proteomics-derived signature matrix
+author: Måns Zamore
+---
+
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+
+
+pg <-
+  read_tsv(here("data/raw_internal/bigsort/report.pg_matrix.tsv")) |>
+  prepare_diann_matrix() |>
+  update_gene_symbols() |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE)
+```
+
+```{r}
+signature_lm7c <- read_tsv(here("data/signature_matrices/LM7c.txt"))
+signature_pbmc <- read_tsv(here("data/signature_matrices/PBMC.txt")) |> select(-any_of(c("NK T cells", "Megakaryocytes")))
+
+pg_deconvoluted_lm7c <- deconvolute("cibersortx", pg, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Proteomics-derived")
+
+pg_deconvoluted_pbmc <- deconvolute("cibersortx", pg, signature_pbmc) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "Transcriptomics-derived")
+```
+
+
+```{r}
+combined <- bind_rows(
+  pg_deconvoluted_lm7c,
+  pg_deconvoluted_pbmc
+) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=-)")) |>
+  mutate(sample_part = rename_samples(sample_part)) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+proteome_transcriptome_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y", labeller = labeller(method = label_wrap_gen(width = 25))) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+```
+
+
+```{r}
+#| label: fig-proteome-transcriptome-sig-matrix
+proteome_transcriptome_plot
+```

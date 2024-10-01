@@ -1,0 +1,123 @@
+---
+title: Deconvolution algorithms
+author: Måns Zamore
+---
+
+```{r}
+here::i_am("proteoDeconv-manuscript.Rproj")
+source(here::here("notebooks/init.R"))
+```
+
+```{r}
+signature <- read_tsv(here("data/signature_matrices/LM7c.txt")) |> rename(Genes = "NAME")
+
+signature_lm22 <- read_tsv(here("data/signature_matrices/LM22.txt")) |> rename(Genes = "Gene symbol")
+```
+
+
+
+```{r}
+matr <- read_tsv(here("data/signature_matrices/LM7c.txt")) |>
+  column_to_rownames("NAME") |>
+  as.matrix()
+
+matr_scaled <- read_tsv(here("data/signature_matrices/LM7c.txt")) |>
+  handle_scaling(gene_column = "NAME", unlog = FALSE, tpm = TRUE) |>
+  column_to_rownames("NAME") |>
+  as.matrix()
+
+epic_signature <- list(
+  refProfiles = matr,
+  sigGenes = rownames(matr)
+)
+epic_signature_scaled <- list(
+  refProfiles = matr_scaled,
+  sigGenes = rownames(matr_scaled)
+)
+```
+
+```{r}
+immune_cells_lowest_value_imputed <-
+  read_excel(here("data/raw_external/Rieckmann_2017_S3.xlsx"), na = "NA") |>
+  rename(Genes = `Gene names`) |>
+  select(Genes, starts_with("LFQ.intensity_")) |> # also available: LFQ.Intensity.Imputed
+  update_gene_symbols(verbose = TRUE) |>
+  handle_gene_groups() |>
+  handle_missing_values(imputation_mode = "lowest_value") |>
+  handle_duplicate_genes(duplicate_mode = "slice") |>
+  handle_scaling(unlog = FALSE, tpm = TRUE) |>
+  select(-contains(c("Erythrocytes", "Thrombocytes", "Th cells", "Tregs")))
+```
+
+```{r}
+signature_lm7c <- read_tsv(
+  here("data/signature_matrices/LM7c.txt")
+)
+
+immune_cells_lowest_value_imputed_deconvoluted <- deconvolute("cibersortx", immune_cells_lowest_value_imputed, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "CIBERSORTx")
+
+immune_cells_lowest_value_imputed_deconvoluted_cibersort <- deconvolute("cibersort", immune_cells_lowest_value_imputed, signature_lm7c) |>
+  pivot_longer(cols = -cell_type, names_to = "sample", values_to = "cell_count") |>
+  mutate(method = "CIBERSORT")
+
+immune_cells_lowest_value_imputed_deconvoluted_epic <- EPIC::EPIC(immune_cells_lowest_value_imputed |> column_to_rownames("Genes"), withOtherCells = TRUE, reference = epic_signature)
+immune_cells_lowest_value_imputed_deconvoluted_epic <- immune_cells_lowest_value_imputed_deconvoluted_epic$mRNAProportions |>
+  tibble::as_tibble(rownames = "sample") |>
+  pivot_longer(cols = -sample, names_to = "cell_type", values_to = "cell_count") |>
+  mutate(method = "EPIC") |>
+  mutate(cell_type = rename_cell_types(cell_type))
+
+immune_cells_lowest_value_imputed_deconvoluted_epic_scaled <- EPIC::EPIC(immune_cells_lowest_value_imputed |> column_to_rownames("Genes"), withOtherCells = TRUE, reference = epic_signature_scaled)
+immune_cells_lowest_value_imputed_deconvoluted_epic_scaled <- immune_cells_lowest_value_imputed_deconvoluted_epic_scaled$mRNAProportions |>
+  tibble::as_tibble(rownames = "sample") |>
+  pivot_longer(cols = -sample, names_to = "cell_type", values_to = "cell_count") |>
+  mutate(method = "EPIC, scaled matrix") |>
+  mutate(cell_type = rename_cell_types(cell_type))
+
+immune_cells_lowest_value_imputed_deconvoluted_epic_no_other_cells <- EPIC::EPIC(immune_cells_lowest_value_imputed |> column_to_rownames("Genes"), withOtherCells = FALSE, reference = epic_signature)
+immune_cells_lowest_value_imputed_deconvoluted_epic_no_other_cells <- immune_cells_lowest_value_imputed_deconvoluted_epic_no_other_cells$mRNAProportions |>
+  tibble::as_tibble(rownames = "sample") |>
+  pivot_longer(cols = -sample, names_to = "cell_type", values_to = "cell_count") |>
+  mutate(method = "EPIC, without uncharacterized cells") |>
+  mutate(cell_type = rename_cell_types(cell_type))
+
+
+combined <- bind_rows(immune_cells_lowest_value_imputed_deconvoluted_cibersort, immune_cells_lowest_value_imputed_deconvoluted_epic, immune_cells_lowest_value_imputed_deconvoluted, immune_cells_lowest_value_imputed_deconvoluted_epic_no_other_cells) |>
+  mutate(sample_part = str_extract(sample, "(?<=_)[^_]+(?=_)")) |>
+  dplyr::filter(sample_part != "Erythrocyte", sample_part != "Thrombocyte", !str_detect(sample, "Th1|Th17|Th2")) |>
+  mutate(sample_part = case_when(
+    str_detect(sample, "MO.classical|MO.intermediate|MO.nonclassical") ~ "Monocytes",
+    str_detect(sample, "NK.bright|NK.dim") ~ "NK cells",
+    str_detect(sample, "T4.EM|T4.EMRA|T4.naive|T4.CM") ~ "CD4+ T cells",
+    str_detect(sample, "T8.EM|T8.EMRA|T8.naive|T8.CM") ~ "CD8+ T cells",
+    str_detect(sample, "mDC|pDC") ~ "Dendritic cells",
+    str_detect(sample, "B.memory|B.naive|B.plasma") ~ "B cells",
+    .default = sample_part
+  )) |>
+  mutate(cell_type = rename_cell_types(cell_type)) |>
+  group_by(sample_part, cell_type, method) |>
+  summarise(
+    mean_cell_count = mean(cell_count, na.rm = TRUE),
+    sd_cell_count = sd(cell_count, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+algorithm_comparison_plot <- ggplot(combined, aes(x = sample_part, y = mean_cell_count, fill = cell_type)) +
+  geom_bar(stat = "identity", position = position_stack()) +
+  facet_wrap(~method, scales = "free_y") +
+  guides(fill = guide_legend(nrow = 2)) +
+  xlab("Sample") +
+  ylab("Estimated proportion") +
+  labs(fill = "Inferred cell types")
+
+
+```
+
+```{r}
+#| label: fig-algorithm-comparison
+
+algorithm_comparison_plot
+```
