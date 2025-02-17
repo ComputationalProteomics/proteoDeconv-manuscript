@@ -1,5 +1,3 @@
-# ProteoDeconv Manuscript Code
-
 This repository contains the code and analysis pipeline for the proteoDeconv manuscript (currently under review).
 
 ## Overview
