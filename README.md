@@ -30,7 +30,7 @@ Required datasets:
   Place in: `data/raw/rieckmann/total`
 - **PXD056050** (currently password-protected) – report.pg_matrix.tsv and report.unique_genes_matrix.tsv  
   Place in: `data/raw/immune_cells`
-- **scRNA seq Data** – Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from the CIBERSORTx website and place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
+- **scRNA-seq Data** – Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from the CIBERSORTx website and place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
 
 Note: The pipeline is designed to tolerate missing datasets; individual targets will fail when data is unavailable.
 
