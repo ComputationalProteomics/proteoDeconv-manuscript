@@ -1,52 +1,74 @@
-This repository contains the code and analysis pipeline for the proteoDeconv manuscript (currently under review).
+# Proteomics Cell-Type Deconvolution Pipeline
+This codebase contains the complete analysis pipeline used in our manuscript (currently under review) for proteomics deconvolution.
 
 ## Overview
 
-The pipeline leverages the R packages {targets, renv} to ensure reproducibility and effective environment management.
+The pipeline is built using these key R packages:
+- {targets} for pipeline management and reproducibility
+- {renv} for consistent package versioning and environment control
+- {proteoDeconv}, our package for facilitating proteomics cell-type deconvolution
 
-## Getting Started
 
-### Prerequisites
+### System Requirements
 
-Ensure the following system dependencies are installed:
-- libcurl4-openssl-dev
-- libssl-dev
-- libpng-dev
-- libxml2-dev
-- libmagick++-dev
-- cmake
-- libmbedtls-dev
-- libharfbuzz-dev
-- libfribidi-dev
+First, install these system libraries:
 
-Additionally, install Quarto and Docker if required.
-
-### Data
-
-Required datasets:
-- **PXD004352** – proteinGroups.txt  
-  Place in: `data/raw/rieckmann/total`
-- **PXD056050** (currently password-protected) – report.pg_matrix.tsv and report.unique_genes_matrix.tsv  
-  Place in: `data/raw/immune_cells`
-- **scRNA-seq Data** – Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from the CIBERSORTx website and place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
-
-Note: The pipeline is designed to tolerate missing datasets; individual targets will fail when data is unavailable.
-
-## Setup
-
-Restore the R environment by running:
-
-```{R}
-renv::restore()
+```{bash}
+libcurl4-openssl-dev
+libssl-dev
+libpng-dev
+libxml2-dev
+libmagick++-dev
+cmake
+libmbedtls-dev
+libharfbuzz-dev
+libfribidi-dev
 ```
 
-## Running the Pipeline
+You'll also need:
+- Quarto for report generation
+- Docker (for running the CIBERSORTx container)
 
-Execute the pipeline with:
-```{R}
-targets::tar_make()
-```
+### Required Datasets
 
-## License
+Our pipeline works with three key datasets:
 
-The code is licensed under the MIT License.
+1. **Proteomics Data (PXD004352)**
+   - File: `proteinGroups.txt`
+   - Place in: `data/raw/rieckmann/total`
+
+2. **Immune Cell Data (PXD056050)**
+   - Currently password-protected
+   - Files: 
+     - `report.pg_matrix.tsv`
+     - `report.unique_genes_matrix.tsv`
+   - Place in: `data/raw/immune_cells`
+
+3. **scRNA-seq Reference Data**
+   - Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from CIBERSORTx
+   - Place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
+
+The pipeline can run with incomplete data - for example, if the scRNA-seq reference data is missing, only the steps requiring that dataset will be skipped.
+
+### CIBERSORTx Setup
+
+1. Download the `CIBERSORT.R` script from CIBERSORTx and place it in `R/cibersort`
+2. Request a token from CIBERSORTx
+3. Create an `.Renviron` file with your credentials:
+   ```R
+   CIBERSORTX_TOKEN = your_token_here
+   CIBERSORTX_EMAIL = your_email_here
+   ```
+
+## Running the Analysis
+
+1. Set up your R environment:
+   ```R
+   renv::restore()
+   ```
+
+2. Launch the pipeline:
+   ```R
+   targets::tar_make()
+   ```
+
