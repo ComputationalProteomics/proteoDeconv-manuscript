@@ -4,9 +4,9 @@ This codebase contains the complete analysis pipeline used in our manuscript (cu
 ## Overview
 
 The pipeline is built using these key R packages:
-- {targets} for pipeline management and reproducibility
-- {renv} for consistent package versioning and environment control
-- {proteoDeconv}, our package for facilitating proteomics cell-type deconvolution
+- `targets` for pipeline management and reproducibility
+- `renv` for consistent package versioning and environment control
+- `proteoDeconv`, our package for facilitating proteomics cell-type deconvolution
 
 
 ### System Requirements
@@ -52,13 +52,18 @@ The pipeline can run with incomplete data - for example, if the scRNA-seq refere
 
 ### CIBERSORTx Setup
 
-1. Download the `CIBERSORT.R` script from CIBERSORTx and place it in `R/cibersort`
-2. Request a token from CIBERSORTx
-3. Create an `.Renviron` file with your credentials:
+1. Request a token from CIBERSORTx
+2. Create an `.Renviron` file with your credentials:
    ```R
    CIBERSORTX_TOKEN = your_token_here
    CIBERSORTX_EMAIL = your_email_here
    ```
+
+### CIBERSORT setup
+
+1. Download the CIBERSORT.R script from the CIBERSORT website
+2. Place it in the `R` directory
+
 
 ## Running the Analysis
 
