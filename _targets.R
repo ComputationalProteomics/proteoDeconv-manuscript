@@ -32,7 +32,7 @@ tar_source()
 tar_plan(
   # File targets
   tar_file(dda_pg, here("data", "raw", "rieckmann", "total", "proteinGroups.txt")),
- 
+
   tar_file(dia_pg, here("data", "raw", "immune_cells", "report.pg_matrix.tsv")),
   tar_file(dia_ug, here("data", "raw", "immune_cells", "report.unique_genes_matrix.tsv")),
   tar_file(sc_rna_seq_pbmc, here("data", "raw", "NSCLC_PBMCs", "Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt")),
@@ -73,14 +73,7 @@ tar_plan(
     remove_samples_pattern = "Erythrocyte|Thrombocyte|Library",
     update_symbols = TRUE
   ),
-  dda_rerun_data = preprocess_protein_data(
-    input = dda_rerun_pg,
-    method = "maxquant",
-    imputation_mode = "lowest_value",
-    duplicate_mode = "slice",
-    remove_samples_pattern = "Erythrocyte|Thrombocyte|Library",
-    update_symbols = TRUE
-  ),
+
 
   sig_dda = create_signature_matrix(
     refsample = dda_data,
@@ -93,5 +86,5 @@ tar_plan(
   preprocessing_analysis,
   sim_validation_analysis,
   sig_source_analysis
-  
+
 )
