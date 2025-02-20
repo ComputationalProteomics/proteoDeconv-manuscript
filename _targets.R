@@ -92,12 +92,6 @@ tar_plan(
     path = "manuscript_figures/figures.qmd",
     working_directory = "manuscript_figures",
     quiet = FALSE
-  ),
-
-  tar_target(
-    supplementary_table,
-    make_supplementary_table(),
-    format="file"
   )
 
 )
