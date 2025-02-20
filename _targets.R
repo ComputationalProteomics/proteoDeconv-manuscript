@@ -15,7 +15,7 @@ tar_config_set(
 here <- function(...) fs::path_rel(here::here(...))
 
 tar_option_set(
-  packages = c("proteoDeconv", "tibble", "tidyverse", "ggplot2", "readxl", "here", "patchwork", "limma", "vsn"),
+  packages = c("proteoDeconv", "tibble", "tidyverse", "ggplot2", "readxl", "here", "patchwork", "limma", "vsn", "writexl"),
   imports = "proteoDeconv",
   format = "qs",
   error = "null",
@@ -85,6 +85,19 @@ tar_plan(
   algorithm_analysis,
   preprocessing_analysis,
   sim_validation_analysis,
-  sig_source_analysis
+  sig_source_analysis,
+
+  tar_quarto(
+    manuscript_figures,
+    path = "manuscript_figures/figures.qmd",
+    working_directory = "manuscript_figures",
+    quiet = FALSE
+  ),
+
+  tar_target(
+    supplementary_table,
+    make_supplementary_table(),
+    format="file"
+  )
 
 )
