@@ -63,10 +63,12 @@ manuscript/_targets.yaml
 CIBERSORT.R
 log/
 
-manuscript/
-manuscript/*.bib
-manuscript/*.json
-manuscript/*complete.qmd
+manuscript_figures/figures_files
+manuscript_figures/_targets.yaml
+manuscript_figures/*.html
+
+*.xlsx
+
 
 *_old.R
 *_old.r

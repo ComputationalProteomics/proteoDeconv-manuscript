@@ -1,0 +1,397 @@
+---
+title: Figures
+execute: 
+  echo: false
+
+---
+
+```{r}
+#| output: false
+library(tidyverse)
+library(targets)
+library(here)
+library(patchwork)
+library(conflicted)
+library(RColorBrewer)
+library(readxl)
+library(writexl)
+conflicts_prefer(dplyr::filter)
+
+tar_config_set(
+  store = here::here("_targets"),
+  script = here::here("_targets.R")
+)
+
+source(here::here("R", "mapping.R"))
+rename_samples <- function(sample) {
+  case_when(
+    str_detect(sample, "Bcell") ~ "B cells",
+    str_detect(sample, "Bnaive") ~ "B naive cells",
+    str_detect(sample, "CD8T") ~ "CD8+ T cells",
+    str_detect(sample, "Mono") ~ "Monocytes",
+    str_detect(sample, "NKactive") ~ "NK cells",
+    str_detect(sample, "Tcell") ~ "T cells",
+    str_detect(sample, "DC") ~ "Dendritic cells",
+    str_detect(sample, "Mix") ~ "Mix",
+    str_detect(sample, "PBMC") ~ "PBMC",
+    str_detect(sample, "even_sample") ~ "Simulated mix",
+    TRUE ~ sample
+  )
+}
+
+scale_colour_brewer_d <- function(..., palette = "Dark2") {
+  scale_colour_brewer(..., palette = palette)
+}
+
+scale_fill_set2 <- function(..., palette = "Set2") {
+  scale_fill_manual(values = set2_colors)
+}
+
+cell_types <- c(
+  "B cells",
+  "CD4+ T cells",
+  "CD8+ T cells",
+  "Monocytes",
+  "NK cells",
+  "Dendritic cells",
+  "Granulocytes",
+  "otherCells"
+)
+set2_colors <- brewer.pal(n = length(cell_types), name = "Set2")
+names(set2_colors) <- cell_types
+
+
+mean_metrics <- function(data, group_var = id) {
+  data %>%
+    group_by({{ group_var }}) %>%
+    summarise(
+      rmse = mean(rmse, na.rm = TRUE),
+      correlation_pearson = mean(correlation_pearson, na.rm = TRUE)
+    )
+}
+
+options(
+  ggplot2.discrete.colour = scale_colour_brewer_d,
+  ggplot2.discrete.fill = scale_fill_set2
+)
+
+ggplot2::update_geom_defaults("label", list(family = "Noto Sans", face = "plain"))
+ggplot2::update_geom_defaults("text", list(family = "Noto Sans", face = "plain"))
+
+theme_set(
+  theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.position = "bottom") +
+    theme(
+      strip.text = element_text(size = rel(1)),
+      strip.background = element_rect(fill = "white", colour = "white", linewidth = 0)
+    ) &
+    theme(plot.tag = element_text(face = 'bold'))
+) 
+
+plot_cell_proportions <- function(data, analysis = c("dia", "dda")) {
+  analysis <- match.arg(analysis)
+  if (analysis == "dia") {
+    data <- data %>%
+      mutate(actual_cell_type = rename_samples(sample)) %>%
+      filter(actual_cell_type != "NK cells")
+  } else if (analysis == "dda") {
+    data <- data %>%
+      mutate(actual_cell_type = map_cell_groups(sample)) |>
+      filter(actual_cell_type != "Unknown")
+  }
+
+  base_groups <- c("actual_cell_type", "cell_type", "method")
+  if (all(c("dup_mode", "imp_mode") %in% names(data))) {
+    base_groups <- c(base_groups, "dup_mode", "imp_mode")
+  }
+
+  data <- data %>%
+    group_by(across(all_of(base_groups))) %>%
+    summarise(
+      mean_cell_count = mean(cell_count, na.rm = TRUE),
+      sd_cell_count = sd(cell_count, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  p <- ggplot(data, aes(x = actual_cell_type, y = mean_cell_count, fill = cell_type)) +
+    geom_bar(stat = "identity", position = position_stack()) +
+    facet_wrap(~method, scales = "free_y") +
+    guides(fill = guide_legend(nrow = 2)) +
+    xlab("Sample") +
+    ylab("Estimated proportion") +
+    labs(fill = "Inferred cell types")
+  return(p)
+}
+
+sig_source_map <- list(
+      "B cells" = c("\\bB\\b", "Bcell", "Bnaive", "_B\\.(memory|naive|plasma)"),
+      "CD4+ T cells" = c("CD4", "\\bT4\\b", "T4\\.(naive|CM|EM|EMRA)"), 
+      "CD8+ T cells" = c("CD8", "\\bT8\\b", "CD8T", "T8\\.(naive|CM|EM|EMRA)"),
+      "Dendritic cells" = c("mDC", "pDC", "DC"),
+      "Monocytes" = c("MO\\.classical", "MO\\.intermediate", "MO\\.nonclassical", "Mono"),
+      "NK cells" = c("NK\\.bright", "NK\\.dim", "NK", "NKactive"),
+      "Granulocytes" = c("Basophil", "Eosinophil", "Neutrophil"),
+      "Erythrocytes" = c("Erythrocyte"),
+      "Thrombocytes" = c("Thrombocyte")
+)
+
+make_sig_source_plot <- function(data, analysis = c("dia", "dda")) {
+  analysis <- match.arg(analysis)
+  if (analysis == "dia") {
+    data <- data %>%
+      mutate(actual_cell_type = rename_samples(sample)) %>%
+      filter(actual_cell_type != "NK cells")
+  } else if (analysis == "dda") {
+    data <- data %>%
+      mutate(actual_cell_type = map_cell_groups(sample))
+  }
+
+  base_groups <- c("actual_cell_type", "cell_type", "id")
+  data <- data %>% mutate(
+    cell_type = map_cell_groups(cell_type, mapping_rules = sig_source_map)
+  )
+
+  data <- data %>%
+    group_by(across(all_of(base_groups))) %>%
+    summarise(
+      mean_cell_count = mean(cell_count, na.rm = TRUE),
+      sd_cell_count = sd(cell_count, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  lbls <- as_labeller(
+    c(sig_source_deconvoluted_pure_dia_pg_sc_rna_seq_pbmc = "scRNA-seq signature", sig_source_deconvoluted_pure_dia_pg_dda = "Proteomics signature")
+  )
+
+  p <- ggplot(data, aes(x = actual_cell_type, y = mean_cell_count, fill = cell_type)) +
+    geom_bar(stat = "identity", position = position_stack()) +
+    facet_wrap(~id, scales = "free_y", labeller = lbls) +
+    guides(fill = guide_legend(nrow = 2)) +
+    xlab("Sample") +
+    ylab("Estimated proportion") +
+    labs(fill = "Inferred cell types")
+  return(p)
+}
+
+make_simval_plot <- function(data) {
+  data <- data %>%
+    mutate(actual_cell_type = rename_samples(sample)) %>%
+    filter(actual_cell_type != "NK cells") |>
+    filter(str_detect(actual_cell_type, "Mix|mix|even_sample"))
+
+
+  base_groups <- c("actual_cell_type", "cell_type", "method")
+
+  data <- data %>%
+    group_by(across(all_of(base_groups))) %>%
+    summarise(
+      mean_cell_count = mean(cell_count, na.rm = TRUE),
+      sd_cell_count = sd(cell_count, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  p <- ggplot(data, aes(x = actual_cell_type, y = mean_cell_count, fill = cell_type)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    facet_wrap(~method, scales = "free_y") +
+    geom_errorbar(aes(ymin = mean_cell_count - sd_cell_count, ymax = mean_cell_count + sd_cell_count), width = 0.2, position = position_dodge(.9)) +
+    guides(fill = guide_legend(nrow = 2)) +
+    xlab("Sample") +
+    ylab("Estimated proportion") +
+    labs(fill = "Inferred cell types")
+  return(p)
+}
+algo_map <- list(
+  "B cells" = c("\\bB\\b", "Bcell", "Bnaive", "_B\\.(memory|naive|plasma)"),
+  "CD4+ T cells" = c("\\bT4\\b", "Tregs", "nTregs", "mTregs", "Th1", "Th2", "Th17", "T4\\.(naive|CM|EM|EMRA)", "CD4"),
+  "CD8+ T cells" = c("\\bT8\\b", "CD8T", "T8\\.(naive|CM|EM|EMRA)", "CD8"),
+  "Dendritic cells" = c("mDC", "pDC", "DC", "Dendritic"),
+  "Monocytes" = c("MO\\.classical", "MO\\.intermediate", "MO\\.nonclassical", "Mono", "MO"),
+  "NK cells" = c("NK\\.bright", "NK\\.dim", "NK", "NKactive"),
+  "Granulocytes" = c("Basophil", "Eosinophil", "Neutrophil", "Granulocytes"),
+  "Erythrocytes" = c("Erythrocyte"),
+  "Thrombocytes" = c("Thrombocyte")
+)
+
+
+
+
+```
+
+
+```{r}
+#| label: fig-algorithm-comparison
+
+tar_read(combined_algo_deconvoluted_pure_dda) %>%
+  mutate(method = if_else(str_detect(method, "unchar"), "EPIC, no other cells", method),
+         cell_type = if_else(algorithm_id == "bayesdebulk",
+                             map_cell_groups(cell_type, mapping_rules = algo_map),
+                             cell_type)) %>%
+  plot_cell_proportions("dda")
+```
+
+
+```{r}
+#| label: fig-norm-comparison
+
+norm_data_dia <- tar_read(combined_norm_deconvoluted_pure_dia) |>
+    mutate(method = normalization)
+plot_cell_proportions(norm_data_dia, "dia")
+```
+
+
+```{r}
+#| label: fig-imputation-combined
+#| fig-height: 7
+
+preproc_deconv <- tar_read(combined_preprocessing_deconvoluted_pure)
+facet_order <- c("lowest_value", "knn", "RF") 
+
+plots <- preproc_deconv %>%
+  filter(str_detect(dataset_id, "dda_pg|dia_pg"), dup_mode == "slice", upd_symbols == TRUE) %>%
+  filter(imp_mode %in% facet_order) %>%
+  mutate(imp_mode = factor(imp_mode, levels = facet_order)) %>% 
+  split(.$dataset_id) %>%
+  map(~ {
+    ds <- unique(.x$dataset_id)[1]
+    analysis_mode <- if_else(str_detect(ds, "dda"), "dda", "dia")
+    p <- plot_cell_proportions(.x, analysis_mode)
+    p + facet_wrap(~ imp_mode, scales = "free_y") 
+  })
+
+(plots[[2]] / plots[[1]]) +           
+  plot_layout(guides = 'collect') +
+  plot_annotation(tag_levels = 'A')
+```
+
+
+```{r}
+#| label: fig-proteome-transcriptome-sig-matrix
+sig_source_deconv <- tar_read(sig_source_combined_deconvoluted_pure) |>
+filter(str_detect(id, "pure_dia_pg_dda|pure_dia_pg_sc")) |>
+filter(!str_detect(sample, "PBMC")) |>
+make_sig_source_plot("dia")
+sig_source_deconv
+```
+
+```{r}
+#| label: fig-signature-comparison-combined
+#| fig-width: 7
+#| fig-height: 6
+
+sig_params_data_dia <- tar_read(combined_sig_params_deconvoluted_pure_dia) |>
+    mutate(method = method_id) |>
+  filter(str_detect(method_id,"-"))
+sigparamplot <- plot_cell_proportions(sig_params_data_dia, "dia")
+
+
+data <- tar_read(combined_sig_params_metrics_dda) |>
+  filter(str_detect(method_id, "-")) |>
+  mean_metrics(method_id)
+
+
+simplot2 <- ggplot(data, aes(x = method_id, y = rmse, size = correlation_pearson)) +
+  geom_point(color = "steelblue") +
+  labs(x = "Method", y = "RMSE", size = "Pearson correlation") +
+  scale_y_continuous(limits = c((min(data$rmse) - 0.005), (max(data$rmse) + 0.005)))
+
+
+combined_plot <- (sigparamplot + theme(legend.position = "right") + guides(fill = guide_legend(nrow = 9))) /
+                 (simplot2 + theme(legend.position = "right") + guides(fill = guide_legend(nrow = 9))) +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(heights = c(2, 1))
+
+combined_plot
+```
+
+
+```{r}
+#| label: fig-simulation-validation
+#| fig-width: 6
+p <- make_simval_plot(tar_read(sim_val_combined_deconv_both) |> filter(str_detect(sample, "Mix|even_sample")))
+p + theme(strip.background = element_blank(), strip.text = element_blank())
+```
+
+
+
+```{r}
+preproc_deconv <- tar_read(combined_preprocessing_deconvoluted_pure) |> filter(str_detect(dataset_id,"dia")) |> filter(!str_detect(dataset_id,"reduced"))
+
+plots <- split(preproc_deconv , preproc_deconv$dataset_id) |>
+  purrr::map(~ {
+    ds <- unique(.x$dataset_id)[1]
+    p <- plot_cell_proportions(.x, "dia")
+if (str_detect(ds, "ug")) {
+    p <- p + ggtitle("Unique genes") + theme(strip.background = element_blank(), strip.text = element_blank())
+} else {
+    p <- p + facet_wrap(~ dup_mode , scales = "free_y") +
+         ggtitle("Protein groups")
+}
+  })
+wrap_plots(plots)  +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A") &
+  theme(legend.position = "bottom")
+```
+
+```{r}
+make_supplementary_table <- function() {
+  mean_metrics2 <- function(data, group_var = id) {
+    data %>%
+      group_by({{ group_var }}) %>%
+      summarise(
+        across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+        across(where(negate(is.numeric)), ~ first(.x)),
+        .groups = "drop"
+      ) |>
+      select(-cell_type)
+  }
+
+  supplementary_table <- list(
+    `Algorithms, per CT` = (combined_algo_metrics_dda),
+    `Algorithms, mean` = (combined_algo_metrics_dda) |> 
+      mean_metrics2() |> 
+      arrange(desc(correlation_pearson)),
+    
+    `Preprocessing, per CT` = (combined_preprocessing_sim_metrics) |> 
+      filter(imp_mode == "lowest_value") |> 
+      select(-imp_mode) |> 
+      filter(!str_detect(dataset_id, "dia")),
+    `Preprocessing, mean` = (combined_preprocessing_sim_metrics) |> 
+      filter(imp_mode == "lowest_value") |> 
+      select(-imp_mode) |> 
+      filter(!str_detect(dataset_id, "dia")) |> 
+      mean_metrics2() |> 
+      arrange(desc(correlation_pearson)),
+    
+    `Normalization, per CT` = (combined_norm_metrics_dda_random),
+    `Normalization, mean` = (combined_norm_metrics_dda_random) |> 
+      mean_metrics2() |> 
+      arrange(desc(correlation_pearson)),
+    
+    `Imputation, per CT` = (combined_preprocessing_sim_metrics) |> 
+      filter(dup_mode == "slice", upd_symbols == TRUE) |> 
+      select(-c(dup_mode, upd_symbols)) |> 
+      filter(!str_detect(dataset_id, "dia")),
+    `Imputation, mean` = (combined_preprocessing_sim_metrics) |> 
+      filter(dup_mode == "slice", upd_symbols == TRUE) |> 
+      select(-c(dup_mode, upd_symbols)) |> 
+      filter(!str_detect(dataset_id, "dia")) |> 
+      mean_metrics2() |> 
+      arrange(desc(correlation_pearson)),
+    
+    `Signature params, per CT` = (combined_sig_params_metrics_dda) |> 
+      filter(str_detect(method_id, "-")),
+    `Signature params, mean` = (combined_sig_params_metrics_dda) |> 
+      filter(str_detect(method_id, "-")) |> 
+      mean_metrics2() |> 
+      arrange(desc(correlation_pearson))
+  )
+
+  file_path <- here("supplementary_table.xlsx")
+  write_xlsx(supplementary_table, file_path)
+
+  return(file_path)
+}
+make_supplementary_table()
+```
