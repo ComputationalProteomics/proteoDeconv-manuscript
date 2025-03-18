@@ -1,9 +1,16 @@
 signature_params_dda <- tibble::tibble(
-  method_id = c("50-200", "100-250", "200-400", "350-550", "550-750", "750-950"),
-  g_min     = c(50, 100, 200, 350, 550, 750),
-  g_max     = c(200, 250, 400, 550, 750, 950),
-  q_value   = rep(0.01, 6),
-  filter    = rep(FALSE, 6)
+  method_id = c(
+    "50-200",
+    "100-250",
+    "200-400",
+    "350-550",
+    "550-750",
+    "750-950"
+  ),
+  g_min = c(50, 100, 200, 350, 550, 750),
+  g_max = c(200, 250, 400, 550, 750, 950),
+  q_value = rep(0.01, 6),
+  filter = rep(FALSE, 6)
 )
 
 sig_param_map_obj <- tar_map(
@@ -35,10 +42,10 @@ sig_param_map_obj <- tar_map(
       signature_params_simulation_dda$cell_fractions,
       signature_params_deconvoluted_dda,
       method_id = method_id,
-      g_min     = g_min,
-      g_max     = g_max,
-      q_value   = q_value,
-      filter    = filter
+      g_min = g_min,
+      g_max = g_max,
+      q_value = q_value,
+      filter = filter
     )
   ),
   tar_target(
@@ -47,6 +54,7 @@ sig_param_map_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = dda_data,
       signature_df = signature_params_sig_dda,
+      return_df = TRUE,
       method_id = method_id,
       g_min = g_min,
       g_max = g_max,
@@ -68,10 +76,10 @@ sig_param_map_obj <- tar_map(
       signature_params_simulation_dia$cell_fractions,
       signature_params_deconvoluted_dia,
       method_id = method_id,
-      g_min     = g_min,
-      g_max     = g_max,
-      q_value   = q_value,
-      filter    = filter
+      g_min = g_min,
+      g_max = g_max,
+      q_value = q_value,
+      filter = filter
     )
   ),
   tar_target(
@@ -80,6 +88,7 @@ sig_param_map_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = dia_data_full,
       signature_df = signature_params_sig_dda,
+      return_df = TRUE,
       method_id = method_id,
       g_min = g_min,
       g_max = g_max,
@@ -101,10 +110,10 @@ sig_param_map_obj <- tar_map(
       signature_params_simulation_dia_reduced$cell_fractions,
       signature_params_deconvoluted_dia_reduced,
       method_id = method_id,
-      g_min     = g_min,
-      g_max     = g_max,
-      q_value   = q_value,
-      filter    = filter
+      g_min = g_min,
+      g_max = g_max,
+      q_value = q_value,
+      filter = filter
     )
   ),
   tar_target(
@@ -113,6 +122,7 @@ sig_param_map_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = dia_data_reduced,
       signature_df = signature_params_sig_dda,
+      return_df = TRUE,
       method_id = method_id,
       g_min = g_min,
       g_max = g_max,
@@ -127,7 +137,7 @@ signature_params_analysis <- tar_plan(
     signature_params_simulation_dda,
     simulate_data(
       data = dda_data,
-      cell_types = map_cell_groups(colnames(dda_data |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(dda_data)),
       seed = 4
     )
   ),
@@ -135,7 +145,7 @@ signature_params_analysis <- tar_plan(
     signature_params_simulation_dia,
     simulate_data(
       data = dia_data,
-      cell_types = map_cell_groups(colnames(dia_data |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(dia_data)),
       seed = 4
     )
   ),
@@ -143,7 +153,7 @@ signature_params_analysis <- tar_plan(
     signature_params_simulation_dia_reduced,
     simulate_data(
       data = dia_data_reduced,
-      cell_types = map_cell_groups(colnames(dia_data_reduced |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(dia_data_reduced)),
       seed = 4
     )
   ),
