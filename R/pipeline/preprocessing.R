@@ -1,5 +1,11 @@
 preprocessing_datasets <- tidyr::expand_grid(
-  dataset_id = c("dda_pg", "dia_pg", "dia_ug", "dia_pg_reduced", "dia_ug_reduced"), # "dda_rerun_pg", "dda_table",
+  dataset_id = c(
+    "dda_pg",
+    "dia_pg",
+    "dia_ug",
+    "dia_pg_reduced",
+    "dia_ug_reduced"
+  ), # "dda_rerun_pg", "dda_table",
   imp_mode = c("lowest_value"),
   dup_mode = c("slice", "merge"),
   upd_symbols = c(FALSE, TRUE),
@@ -16,7 +22,10 @@ additional_dda_pg <- tidyr::expand_grid(
   tpm = TRUE
 )
 
-preprocessing_datasets <- dplyr::bind_rows(preprocessing_datasets, additional_dda_pg)
+preprocessing_datasets <- dplyr::bind_rows(
+  preprocessing_datasets,
+  additional_dda_pg
+)
 
 
 preprocessing_obj <- tar_map(
@@ -42,16 +51,16 @@ preprocessing_obj <- tar_map(
     simulation,
     simulate_data(
       data = preprocessed_data,
-      cell_types = map_cell_groups(colnames(preprocessed_data |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(preprocessed_data)),
       seed = 4
     )
   ),
   tar_target(
     deconvoluted,
     deconvolute_data(
-      method            = "cibersort",
+      method = "cibersort",
       preprocessed_data = simulation$simulated_data,
-      signature_df      = sig_dda
+      signature_df = sig_dda
     )
   ),
   tar_target(
@@ -71,6 +80,7 @@ preprocessing_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = preprocessed_data,
       signature_df = sig_dda,
+      return_df = TRUE,
       imp_mode = imp_mode,
       dup_mode = dup_mode,
       upd_symbols = upd_symbols,

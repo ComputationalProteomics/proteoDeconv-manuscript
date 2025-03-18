@@ -29,7 +29,7 @@ norm_param_map_obj <- tar_map(
     norm_simulation_dda_random,
     simulate_data(
       data = norm_dda_data,
-      cell_types = map_cell_groups(colnames(norm_dda_data |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(norm_dda_data)),
       seed = 4,
       scenario = "random"
     )
@@ -56,6 +56,7 @@ norm_param_map_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = norm_dda_data,
       signature_df = norm_sig_dda,
+      return_df = TRUE,
       normalization = normalization
     )
   ),
@@ -76,7 +77,9 @@ norm_param_map_obj <- tar_map(
     norm_simulation_dia_random,
     simulate_data(
       data = norm_dia_data,
-      cell_types = map_cell_groups(colnames(norm_dia_data |> dplyr::select(-Genes))),
+      cell_types = map_cell_groups(colnames(
+        norm_dia_data
+      )),
       seed = 4,
       scenario = "random"
     )
@@ -103,6 +106,7 @@ norm_param_map_obj <- tar_map(
       method = "cibersort",
       preprocessed_data = norm_dia_data,
       signature_df = norm_sig_dda,
+      return_df = TRUE,
       normalization = normalization
     )
   )
