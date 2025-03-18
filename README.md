@@ -5,6 +5,7 @@ This codebase contains the complete analysis pipeline used in our manuscript (cu
 ## Overview
 
 The pipeline is built using these key R packages:
+
 - `targets` for pipeline management and reproducibility
 - `renv` for consistent package versioning and environment control
 - `proteoDeconv`, our package for facilitating proteomics cell-type deconvolution
@@ -26,18 +27,24 @@ After cloning, you'll need to add the required data files, CIBERSORT.R script, a
 
 You can run this pipeline using one of two approaches:
 
-### Option 1: Using Docker (Recommended)
+### Option 1: Using Docker
 
 1. **Install Docker** on your system.
 
-2. **Pull and run the Docker image** from within the cloned repository directory:
+2. **Pull and run the Docker image** from within the cloned repository
+   directory:
+
    ```bash
    docker run -d \
-    -p 127.0.0.1:8787:8787 \
-    -v "$(pwd):/home/rstudio/proteoDeconv-manuscript" \
-    -v /home/rstudio/proteoDeconv-manuscript/renv \
-    manszamore/proteodeconv-manuscript:latest
+   -p 127.0.0.1:8787:8787 \
+   -v "$(pwd):/home/rstudio/proteoDeconv-manuscript" \
+   -v /home/rstudio/proteoDeconv-manuscript/renv \
+   -v /var/run/docker.sock:/var/run/docker.sock \
+   manszamore/proteodeconv-manuscript:latest
    ```
+
+   Note: The Docker socket is mounted (via -v /var/run/docker.sock:/var/run/docker.sock) to enable Docker-in-Docker functionality, which is required to run the CIBERSORTx Docker image from within this container.
+
 
 3. **Access RStudio Server**:
    - Open your browser and navigate to `http://localhost:8787/`
@@ -52,6 +59,7 @@ You can run this pipeline using one of two approaches:
    - Docker (for running the CIBERSORTx container)
 
 2. **System Libraries** (Ubuntu/Debian):
+
    ```bash
    apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev libssl-dev make libgsl0-dev libglpk-dev \
@@ -61,6 +69,7 @@ You can run this pipeline using one of two approaches:
    ```
 
 3. **R Environment Setup**:
+
    ```R
    renv::restore()
    ```
@@ -98,6 +107,7 @@ In order to run CIBERSORTx, you will need to:
 
 1. Request a token from CIBERSORTx (free for academic use)
 2. Create an `.Renviron` file in this folder with your credentials:
+
    ```R
    CIBERSORTX_TOKEN = your_token_here
    CIBERSORTX_EMAIL = your_email_here
@@ -112,6 +122,7 @@ In order to run CIBERSORTx, you will need to:
 ## Running the Analysis
 
 Launch the pipeline:
+
 ```R
 targets::tar_make()
 ```
@@ -119,6 +130,7 @@ targets::tar_make()
 The complete pipeline takes approximately 5 hours to run in its entirety.
 
 You can also run specific parts of the pipeline using pattern matching:
+
 ```R
 # Only run targets related to preprocessing (e.g. merge vs slice, etc.)
 targets::tar_make(matches("preprocessing"))
@@ -127,6 +139,7 @@ targets::tar_make(matches("preprocessing"))
 ## Expected Output
 
 After successful completion, the pipeline will generate:
+
 - Manuscript figures in the `manuscript_figures/` directory
 - A supplementary table in `supplementary_table.xlsx` containing simulation results
 
