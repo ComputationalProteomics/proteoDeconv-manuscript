@@ -1,6 +1,6 @@
 ---
 title: Figures
-execute: 
+execute:
   echo: false
 
 ---
@@ -87,7 +87,7 @@ theme_set(
       strip.background = element_rect(fill = "white", colour = "white", linewidth = 0)
     ) &
     theme(plot.tag = element_text(face = 'bold'))
-) 
+)
 
 plot_cell_proportions <- function(data, analysis = c("dia", "dda")) {
   analysis <- match.arg(analysis)
@@ -126,7 +126,7 @@ plot_cell_proportions <- function(data, analysis = c("dia", "dda")) {
 
 sig_source_map <- list(
       "B cells" = c("\\bB\\b", "Bcell", "Bnaive", "_B\\.(memory|naive|plasma)"),
-      "CD4+ T cells" = c("CD4", "\\bT4\\b", "T4\\.(naive|CM|EM|EMRA)"), 
+      "CD4+ T cells" = c("CD4", "\\bT4\\b", "T4\\.(naive|CM|EM|EMRA)"),
       "CD8+ T cells" = c("CD8", "\\bT8\\b", "CD8T", "T8\\.(naive|CM|EM|EMRA)"),
       "Dendritic cells" = c("mDC", "pDC", "DC"),
       "Monocytes" = c("MO\\.classical", "MO\\.intermediate", "MO\\.nonclassical", "Mono"),
@@ -245,21 +245,21 @@ plot_cell_proportions(norm_data_dia, "dia")
 #| fig-height: 7
 
 preproc_deconv <- tar_read(combined_preprocessing_deconvoluted_pure)
-facet_order <- c("lowest_value", "knn", "RF") 
+facet_order <- c("lowest_value", "knn", "RF")
 
 plots <- preproc_deconv %>%
   filter(str_detect(dataset_id, "dda_pg|dia_pg"), dup_mode == "slice", upd_symbols == TRUE) %>%
   filter(imp_mode %in% facet_order) %>%
-  mutate(imp_mode = factor(imp_mode, levels = facet_order)) %>% 
+  mutate(imp_mode = factor(imp_mode, levels = facet_order)) %>%
   split(.$dataset_id) %>%
   map(~ {
     ds <- unique(.x$dataset_id)[1]
     analysis_mode <- if_else(str_detect(ds, "dda"), "dda", "dia")
     p <- plot_cell_proportions(.x, analysis_mode)
-    p + facet_wrap(~ imp_mode, scales = "free_y") 
+    p + facet_wrap(~ imp_mode, scales = "free_y")
   })
 
-(plots[[2]] / plots[[1]]) +           
+(plots[[2]] / plots[[1]]) +
   plot_layout(guides = 'collect') +
   plot_annotation(tag_levels = 'A')
 ```
@@ -349,42 +349,42 @@ make_supplementary_table <- function() {
 
   supplementary_table <- list(
     `Algorithms, per CT` = (combined_algo_metrics_dda),
-    `Algorithms, mean` = (combined_algo_metrics_dda) |> 
-      mean_metrics2() |> 
+    `Algorithms, mean` = (combined_algo_metrics_dda) |>
+      mean_metrics2() |>
       arrange(desc(correlation_pearson)),
-    
-    `Preprocessing, per CT` = (combined_preprocessing_sim_metrics) |> 
-      filter(imp_mode == "lowest_value") |> 
-      select(-imp_mode) |> 
+
+    `Preprocessing, per CT` = (combined_preprocessing_sim_metrics) |>
+      filter(imp_mode == "lowest_value") |>
+      select(-imp_mode) |>
       filter(!str_detect(dataset_id, "dia")),
-    `Preprocessing, mean` = (combined_preprocessing_sim_metrics) |> 
-      filter(imp_mode == "lowest_value") |> 
-      select(-imp_mode) |> 
-      filter(!str_detect(dataset_id, "dia")) |> 
-      mean_metrics2() |> 
+    `Preprocessing, mean` = (combined_preprocessing_sim_metrics) |>
+      filter(imp_mode == "lowest_value") |>
+      select(-imp_mode) |>
+      filter(!str_detect(dataset_id, "dia")) |>
+      mean_metrics2() |>
       arrange(desc(correlation_pearson)),
-    
+
     `Normalization, per CT` = (combined_norm_metrics_dda_random),
-    `Normalization, mean` = (combined_norm_metrics_dda_random) |> 
-      mean_metrics2() |> 
+    `Normalization, mean` = (combined_norm_metrics_dda_random) |>
+      mean_metrics2() |>
       arrange(desc(correlation_pearson)),
-    
-    `Imputation, per CT` = (combined_preprocessing_sim_metrics) |> 
-      filter(dup_mode == "slice", upd_symbols == TRUE) |> 
-      select(-c(dup_mode, upd_symbols)) |> 
+
+    `Imputation, per CT` = (combined_preprocessing_sim_metrics) |>
+      filter(dup_mode == "slice", upd_symbols == TRUE) |>
+      select(-c(dup_mode, upd_symbols)) |>
       filter(!str_detect(dataset_id, "dia")),
-    `Imputation, mean` = (combined_preprocessing_sim_metrics) |> 
-      filter(dup_mode == "slice", upd_symbols == TRUE) |> 
-      select(-c(dup_mode, upd_symbols)) |> 
-      filter(!str_detect(dataset_id, "dia")) |> 
-      mean_metrics2() |> 
+    `Imputation, mean` = (combined_preprocessing_sim_metrics) |>
+      filter(dup_mode == "slice", upd_symbols == TRUE) |>
+      select(-c(dup_mode, upd_symbols)) |>
+      filter(!str_detect(dataset_id, "dia")) |>
+      mean_metrics2() |>
       arrange(desc(correlation_pearson)),
-    
-    `Signature params, per CT` = (combined_sig_params_metrics_dda) |> 
+
+    `Signature params, per CT` = (combined_sig_params_metrics_dda) |>
       filter(str_detect(method_id, "-")),
-    `Signature params, mean` = (combined_sig_params_metrics_dda) |> 
-      filter(str_detect(method_id, "-")) |> 
-      mean_metrics2() |> 
+    `Signature params, mean` = (combined_sig_params_metrics_dda) |>
+      filter(str_detect(method_id, "-")) |>
+      mean_metrics2() |>
       arrange(desc(correlation_pearson))
   )
 
@@ -393,5 +393,9 @@ make_supplementary_table <- function() {
 
   return(file_path)
 }
-make_supplementary_table()
+result <- tryCatch({
+  make_supplementary_table()
+}, error = function(e) {
+  message("An error occurred: ", e$message)
+})
 ```
