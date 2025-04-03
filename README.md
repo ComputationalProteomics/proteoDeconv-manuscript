@@ -78,11 +78,11 @@ You can run this pipeline using one of two approaches:
 
 Regardless of installation method, you'll need to add these datasets:
 
-1. **Rieckmann et al. DDA Data (PXD004352)**
+1. **Rieckmann et al. DDA Data ([PXD004352](https://www.ebi.ac.uk/pride/archive/projects/PXD004352))**
    - File: `proteinGroups.txt`
    - Place in: `data/raw/rieckmann/total`
 
-2. **Immune Cell DIA Data (PXD056050)**
+2. **Immune Cell DIA Data ([PXD056050](https://www.ebi.ac.uk/pride/archive/projects/PXD056050))**
    - Currently password-protected, requiring a reviewer account
    - Files:
      - `report.pg_matrix.tsv`
@@ -90,7 +90,7 @@ Regardless of installation method, you'll need to add these datasets:
    - Place in: `data/raw/immune_cells`
 
 3. **scRNA-seq Reference Data**
-   - Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from CIBERSORTx
+   - Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from [CIBERSORTx](https://cibersortx.stanford.edu/)
    - Place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
 
 The pipeline can run with incomplete data - for example, if the scRNA-seq reference data is missing, only the steps requiring that dataset will be skipped.
@@ -99,13 +99,13 @@ The pipeline can run with incomplete data - for example, if the scRNA-seq refere
 
 Due to licensing restrictions, we cannot include the CIBERSORT code in this repository. To run the CIBERSORT analysis, you will need to:
 
-1. Download the `CIBERSORT.R` script (version 1.04) from the CIBERSORT website and place it in `R`
+1. Download the `CIBERSORT.R` script (version 1.04) from the [CIBERSORT website](https://cibersortx.stanford.edu/) and place it in `R`
 
 ### CIBERSORTx Credentials
 
 In order to run CIBERSORTx, you will need to:
 
-1. Request a token from CIBERSORTx (free for academic use)
+1. Request a token from [CIBERSORTx](https://cibersortx.stanford.edu/) (free for academic use)
 2. Create an `.Renviron` file in this folder with your credentials:
 
    ```R
@@ -129,10 +129,13 @@ targets::tar_make()
 
 The complete pipeline takes approximately 5 hours to run in its entirety.
 
-You can also run specific parts of the pipeline using pattern matching:
+You can view all 433 targets that are in the pipeline by running `targets::tar_manifest()`. You can then run specific parts of the pipeline using pattern matching:
 
 ```R
-# Only run targets related to preprocessing (e.g. merge vs slice, etc.)
+# Run the deconvolutions used to make Figure 2 in the manuscript
+targets::tar_make(matches("combined_algo_deconvoluted_pure_dda"))
+
+# Or only run targets related to preprocessing (e.g. merge vs slice, etc.)
 targets::tar_make(matches("preprocessing"))
 ```
 
