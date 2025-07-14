@@ -29,9 +29,9 @@ You can run this pipeline using one of two approaches:
 
 ### Option 1: Using Docker
 
-1. **Install Docker** on your system.
+1. Install Docker on your system.
 
-2. **Pull and run the Docker image** from within the cloned repository
+2. Pull and run the Docker image from within the cloned repository
    directory:
 
    ```bash
@@ -46,19 +46,19 @@ You can run this pipeline using one of two approaches:
    Note: The Docker socket is mounted (via -v /var/run/docker.sock:/var/run/docker.sock) to enable Docker-in-Docker functionality, which is required to run the CIBERSORTx Docker image from within this container.
 
 
-3. **Access RStudio Server**:
+3. Access RStudio Server:
    - Open your browser and navigate to `http://localhost:8787/`
    - The Docker image comes with all required dependencies pre-installed
 
 ### Option 2: Local Installation
 
-1. **System Requirements**:
+1. System Requirements:
    - Tested on Ubuntu and macOS
    - R version 4.4.2 (we recommend using [rig](https://github.com/r-lib/rig) for R version management)
    - Quarto for report generation
    - Docker (for running the CIBERSORTx container)
 
-2. **System Libraries** (Ubuntu/Debian):
+2. System Libraries (Ubuntu/Debian):
 
    ```bash
    apt-get update && apt-get install -y --no-install-recommends \
@@ -68,7 +68,7 @@ You can run this pipeline using one of two approaches:
     libharfbuzz-dev libjpeg-dev libtiff-dev curl
    ```
 
-3. **R Environment Setup**:
+3. R Environment Setup:
 
    ```R
    renv::restore()
@@ -78,18 +78,17 @@ You can run this pipeline using one of two approaches:
 
 Regardless of installation method, you'll need to add these datasets:
 
-1. **Rieckmann et al. DDA Data ([PXD004352](https://www.ebi.ac.uk/pride/archive/projects/PXD004352))**
+1. Rieckmann et al. DDA Data ([PXD004352](https://www.ebi.ac.uk/pride/archive/projects/PXD004352))
    - File: `proteinGroups.txt`
    - Place in: `data/raw/rieckmann/total`
 
-2. **Immune Cell DIA Data ([PXD056050](https://www.ebi.ac.uk/pride/archive/projects/PXD056050))**
-   - Currently password-protected, requiring a reviewer account
+2. Immune Cell DIA Data ([PXD056050](https://www.ebi.ac.uk/pride/archive/projects/PXD056050))
    - Files:
      - `report.pg_matrix.tsv`
      - `report.unique_genes_matrix.tsv`
    - Place in: `data/raw/immune_cells`
 
-3. **scRNA-seq Reference Data**
+3. scRNA-seq Reference Data
    - Download "NSCLC PBMCs Single Cell RNA-Seq (Fig. 2ab)" from [CIBERSORTx](https://cibersortx.stanford.edu/)
    - Place `Fig2ab-NSCLC_PBMCs_scRNAseq_refsample.txt` in `data/raw/NSCLC_PBMCs/`
 
@@ -154,4 +153,6 @@ If you encounter any issues, please open an issue in the GitHub repository.
 
 ## Citation
 
-Please cite our work if you use this pipeline or proteoDeconv in your research. The citation details will be added once the manuscript is published.
+Please cite our work if you use this pipeline or proteoDeconv in your research:
+
+Zamore, M., Mosquim Junior, S., Andree, S. L., Altunbulakli, C., Lindstedt, M., & Levander, F. (2025). Considerations and Software for Successful Immune Cell Deconvolution Using Proteomics Data. *Journal of Proteome Research*. https://doi.org/10.1021/acs.jproteome.4c00868
